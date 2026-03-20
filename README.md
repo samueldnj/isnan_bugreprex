@@ -1,7 +1,28 @@
 # TMB ISNAN Macro Bug Reprex
 
 Minimal reproducible example demonstrating a compilation failure
-in packages that link to both TMB and Rcpp on Linux (GCC).
+in packages that link to both TMB and Rcpp on GCC (Linux and
+Windows).
+
+## Motivation
+
+We are developing an R package that refactors repeated C++
+header functions from multiple fisheries stock assessment
+models into a single shared source.  The goal is to reduce
+code drift across projects and improve maintainability.
+
+These shared functions (e.g., Baranov equation solvers,
+composition likelihood kernels) are not TMB objective
+functions -- they are standalone templates that use TMB types
+such as `tmbutils::array<Type>` and `vector<Type>`.  Because
+the functions have no `objective_function`, we cannot test
+them through TMB's `MakeADFun()` interface.  Instead we
+expose them to R via Rcpp exports and test directly with
+`testthat`, which requires both `#include <TMB.hpp>` (for
+the types) and `#include <Rcpp.h>` (for the exports) in the
+same translation unit.
+
+This include pattern triggers a compilation failure on GCC.
 
 ## The bug
 
