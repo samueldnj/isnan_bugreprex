@@ -69,27 +69,25 @@ jobs:
           echo "$CXX $CXXFLAGS $CPPFLAGS $R_INC -I$TMB_INC -I$RCPP_INC -I$EIGEN_INC -c $SRC"
           echo "::endgroup::"
 
-          # Use platform-appropriate null device
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            DEVNULL=NUL
-          else
-            DEVNULL=/dev/null
-          fi
-
-          # Compile and capture output + exit code
+          # Compile, writing output to a file so we can
+          # reliably grep it on all platforms (Windows
+          # $() capture drops stderr in some shells)
+          LOGFILE=$(mktemp)
           set +e
-          OUTPUT=$($CXX $CXXFLAGS $CPPFLAGS $R_INC \
+          $CXX $CXXFLAGS $CPPFLAGS $R_INC \
             -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
-            -c "$SRC" -o "$DEVNULL" 2>&1)
+            -c "$SRC" -o compile_test.o > "$LOGFILE" 2>&1
           RC=$?
           set -e
 
-          echo "$OUTPUT"
+          echo "::group::Compiler output"
+          cat "$LOGFILE"
+          echo "::endgroup::"
+          rm -f compile_test.o
 
           if [ $RC -ne 0 ]; then
             # Check whether failure is specifically the ISNAN bug
-            # GCC wraps the identifier in quotes: 'isnan'
-            if echo "$OUTPUT" | grep -qE "isnan.*not declared|ISNAN"; then
+            if grep -qE "isnan.*not declared|ISNAN" "$LOGFILE"; then
               echo ""
               echo "========================================"
               echo "RESULT: FAIL (ISNAN macro bug confirmed)"
@@ -102,6 +100,7 @@ jobs:
               echo "========================================"
               echo "::error::Compilation failed for a reason other than the ISNAN bug"
             fi
+            rm -f "$LOGFILE"
             exit 1
           else
             echo ""
@@ -109,3 +108,4 @@ jobs:
             echo "RESULT: PASS (compilation succeeded)"
             echo "========================================"
           fi
+          rm -f "$LOGFILE"
