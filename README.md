@@ -46,9 +46,9 @@ All three must be true:
 ## Why CRAN does not catch this
 
 - TMB's own CRAN checks do not include Rcpp headers after the
-  bessel headers, so the macro leak is never exposed
+  bessel headers, so the macro conflict is never exposed
 - CRAN's Linux builders use GCC, but TMB itself compiles fine
-  because the macro only poisons *downstream* code
+  because the macro only disrupts *downstream* code
 - Downstream CRAN packages that use both TMB and Rcpp
   (e.g., glmmTMB) may include Rcpp first, accidentally
   avoiding the bug
@@ -82,13 +82,26 @@ See: [adcomp commit 456bc479f](https://github.com/kaskr/adcomp/compare/master...
 
 ## CI results
 
-The GitHub Actions workflow in this repo runs three jobs on
-Ubuntu (GCC):
+The GitHub Actions workflow runs four jobs on Ubuntu (GCC):
 
 1. **tmb-before-rcpp** -- compiles `isnan_bug.cpp` (expected
    to fail)
 2. **rcpp-before-tmb** -- compiles `reversed_includes.cpp`
    (expected to pass, demonstrating the include-order
    workaround)
-3. **full-install** -- runs `R CMD INSTALL` (expected to fail
-   because `isnan_bug.cpp` is compiled)
+3. **cran-check** -- runs `R CMD check --as-cran` (expected
+   to fail)
+4. **tmb-cran-check** -- runs `R CMD check --as-cran` on
+   TMB itself (expected to pass, showing why CRAN does not
+   catch the bug)
+
+### R-hub results
+
+R-hub checks on CRAN-equivalent platforms both fail:
+
+- **linux (R-devel)** -- GCC with `-std=gnu++20`: ERROR
+- **ubuntu-gcc12** (matches CRAN's
+  `r-devel-linux-x86_64-debian-gcc`): ERROR
+
+Both report `'isnan' was not declared in this scope` at
+`bessel.hpp:60` when the macro expands inside Rcpp headers.
