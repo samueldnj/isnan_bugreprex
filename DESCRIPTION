@@ -1,0 +1,16 @@
+Package: isnanReprex
+Type: Package
+Title: Minimal Reprex for TMB ISNAN Macro Bug with GCC C++17
+Version: 0.1.0
+Authors@R: person("Sam", "Johnson",
+    email = "sdnjohnson@landmarkfisheries.com",
+    role = c("aut", "cre"))
+Description: Demonstrates that the bare isnan() call inside TMB's
+    ISNAN macro in tiny_ad/bessel/bessel.hpp fails under GCC with
+    C++17 because isnan is not in the global namespace.  This
+    package includes TMB.hpp and calls besselK() to trigger the
+    macro expansion.
+License: GPL-3
+Encoding: UTF-8
+Imports: TMB, RcppEigen, Rcpp
+LinkingTo: TMB, RcppEigen, Rcpp
