@@ -106,16 +106,33 @@ See: [adcomp commit 456bc479f](https://github.com/kaskr/adcomp/compare/master...
 
 ## CI results
 
-The [GitHub Actions workflow](https://github.com/samueldnj/isnan_bugreprex/actions)
-runs three jobs on Ubuntu (GCC):
+The [diagnostic matrix](https://github.com/samueldnj/isnan_bugreprex/actions)
+tests 24 combinations: 3 OS x 4 R versions x 2 include
+orders.
 
-1. **tmb-before-rcpp** -- compiles `isnan_bug.cpp` (expected
-   to fail, confirming the bug)
-2. **rcpp-before-tmb** -- compiles `reversed_includes.cpp`
-   (expected to pass, demonstrating the include-order
-   workaround)
-3. **cran-check** -- runs `R CMD check --as-cran` (expected
-   to fail)
+### Matrix results
+
+| OS | R 4.3 | R 4.4 | release | devel |
+|----|-------|-------|---------|-------|
+| **Ubuntu (GCC)** | FAIL / pass | FAIL / pass | FAIL / pass | FAIL / pass |
+| **Windows (Rtools GCC)** | FAIL / pass | FAIL / pass | FAIL / pass | FAIL / pass |
+| **macOS (clang)** | pass / pass | pass / pass | pass / pass | pass / pass |
+
+Each cell shows: tmb-first / rcpp-first.
+
+All failures report `'isnan' was not declared in this scope`
+at `bessel.hpp:60`.
+
+**Key findings:**
+
+- The bug affects **all R versions** (4.3 through devel), not
+  just R >= 4.4. The boundary is **GCC vs clang**, not the
+  C++ standard version.
+- **Both Ubuntu (GCC) and Windows (Rtools/MinGW GCC)** are
+  affected.
+- **macOS (clang)** is unaffected regardless of include order.
+- The **include-order workaround** (Rcpp before TMB) works
+  on all GCC platforms.
 
 ### R-hub results
 
