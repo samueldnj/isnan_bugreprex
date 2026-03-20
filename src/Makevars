@@ -1,1 +1,2 @@
-CXX_STD = CXX17
+# No CXX_STD set — relying on R's default (C++17 since R >= 4.4)
+PKG_CXXFLAGS =
