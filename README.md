@@ -66,24 +66,30 @@ All three must be true:
 
 ## Why CRAN does not catch this
 
-TMB's own CRAN checks compile TMB in isolation -- the package
-does not include Rcpp headers, so the macro conflict is never
-exposed.
+TMB's own CRAN checks compile TMB in isolation -- the
+package does not include Rcpp headers, so the macro
+conflict is never exposed.
 
-Downstream CRAN packages that depend on TMB (e.g.,
-[glmmTMB](https://github.com/glmmTMB/glmmTMB)) avoid the bug
-because they do not include `Rcpp.h` in the same translation
-unit as `TMB.hpp`.  glmmTMB uses `RcppEigen` in `LinkingTo`
-only for Eigen header paths, but never actually
-`#include`s `Rcpp.h` in its source files.
+## Why other downstream packages do not see this
 
-The bug surfaces in packages that use both TMB's C++ interface
-and Rcpp exports in the same `.cpp` file -- a less common but
-legitimate pattern.  TMB's
+We have not checked every TMB-dependent package, but we
+checked arguably the most popular one:
+[glmmTMB](https://github.com/glmmTMB/glmmTMB).  glmmTMB
+never `#include`s `Rcpp.h` in any of its source files --
+it uses `RcppEigen` in `LinkingTo` only for Eigen header
+paths.  Its tests run entirely through R via TMB's
+`MakeADFun()` interface, validating results by checking the
+numerical value of the objective function and fitted model
+components (fixed effects, variance parameters, etc.).
+There is no C++-level unit testing and no Rcpp exports, so
+the macro conflict is never exposed.
+
+The bug surfaces in packages that use both TMB's C++
+interface and Rcpp exports in the same `.cpp` file.  TMB's
 [documentation](https://kaskr.github.io/adcomp/_book/Tutorial.html)
-shows `#include <TMB.hpp>` as the first include, which means
-any downstream code that follows this pattern and also uses
-Rcpp will hit the bug on GCC.
+shows `#include <TMB.hpp>` as the first include, which
+means any downstream code that follows this pattern and
+also uses Rcpp will hit the bug on GCC.
 
 ## Workarounds
 
