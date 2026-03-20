@@ -34,8 +34,7 @@ jobs:
       - name: Install TMB from fork (with ISNAN fix)
         shell: bash
         run: |
-          Rscript -e 'install.packages("remotes", repos = "https://cran.rstudio.com")'
-          Rscript -e 'remotes::install_github("samueldnj/adcomp/TMB", ref = "fix/isnan-bessel")'
+          Rscript -e 'pak::pak("samueldnj/adcomp/TMB@fix/isnan-bessel")'
 
       - name: Compiler and R configuration
         shell: bash
@@ -104,12 +103,11 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-          Rscript -e 'install.packages(c("RcppEigen", "Matrix", "numDeriv", "remotes"), repos = "https://cran.rstudio.com")'
+          Rscript -e 'install.packages(c("RcppEigen", "Matrix", "numDeriv"), repos = "https://cran.rstudio.com")'
 
       - name: Build and check fixed TMB
         shell: bash
         run: |
-          Rscript -e 'remotes::install_github("samueldnj/adcomp/TMB", ref = "fix/isnan-bessel", INSTALL_opts = "--build")'
           Rscript -e 'download.file("https://github.com/samueldnj/adcomp/archive/refs/heads/fix/isnan-bessel.tar.gz", "adcomp.tar.gz")'
           tar xzf adcomp.tar.gz
           R CMD build adcomp-fix-isnan-bessel/TMB
