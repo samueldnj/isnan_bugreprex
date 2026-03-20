@@ -69,11 +69,18 @@ jobs:
           echo "$CXX $CXXFLAGS $CPPFLAGS $R_INC -I$TMB_INC -I$RCPP_INC -I$EIGEN_INC -c $SRC"
           echo "::endgroup::"
 
+          # Use platform-appropriate null device
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            DEVNULL=NUL
+          else
+            DEVNULL=/dev/null
+          fi
+
           # Compile and capture output + exit code
           set +e
           OUTPUT=$($CXX $CXXFLAGS $CPPFLAGS $R_INC \
             -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
-            -c "$SRC" -o /dev/null 2>&1)
+            -c "$SRC" -o "$DEVNULL" 2>&1)
           RC=$?
           set -e
 
@@ -81,7 +88,8 @@ jobs:
 
           if [ $RC -ne 0 ]; then
             # Check whether failure is specifically the ISNAN bug
-            if echo "$OUTPUT" | grep -q "isnan.*not declared\|ISNAN"; then
+            # GCC wraps the identifier in quotes: 'isnan'
+            if echo "$OUTPUT" | grep -qE "isnan.*not declared|ISNAN"; then
               echo ""
               echo "========================================"
               echo "RESULT: FAIL (ISNAN macro bug confirmed)"
