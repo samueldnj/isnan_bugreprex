@@ -4,17 +4,21 @@ on: [push, pull_request]
 
 jobs:
   # Verify the fix: install TMB from the fork with the
-  # one-line ISNAN fix, then compile tmb-first on GCC
-  # platforms (the ones that fail with CRAN TMB).
+  # one-line ISNAN fix, then run the full matrix.
+  # All 24 cells should PASS, confirming the fix does
+  # not break anything on any platform.
   verify-fix:
     runs-on: ${{ matrix.os }}
-    name: "FIXED / ${{ matrix.os }} / R ${{ matrix.r }}"
+    name: "FIXED / ${{ matrix.os }} / R ${{ matrix.r }} / ${{ matrix.test }}"
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        r: ['release', 'devel']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        r: ['4.3', '4.4', 'release', 'devel']
+        test:
+          - tmb-first
+          - rcpp-first
 
     steps:
       - uses: actions/checkout@v4
@@ -36,11 +40,25 @@ jobs:
       - name: Compiler and R configuration
         shell: bash
         run: |
+          echo "::group::R version"
           Rscript -e 'cat(R.version.string, "\n")'
-          CXX=$(R CMD config CXX 2>/dev/null | awk '{print $1}')
-          $CXX --version 2>/dev/null | head -1 || true
+          Rscript -e 'cat("Platform:", R.version$platform, "\n")'
+          echo "::endgroup::"
 
-      - name: Compile tmb-first with fixed TMB (expect PASS)
+          echo "::group::R CMD config"
+          for var in CXX CXXFLAGS CXXSTD; do
+            val=$(R CMD config $var 2>/dev/null) && \
+              echo "$var: $val" || \
+              echo "$var: (not available)"
+          done
+          echo "::endgroup::"
+
+          echo "::group::Compiler version"
+          CXX=$(R CMD config CXX 2>/dev/null | awk '{print $1}')
+          $CXX --version 2>/dev/null | head -3 || echo "(could not query compiler)"
+          echo "::endgroup::"
+
+      - name: "Compile: ${{ matrix.test }} (fixed TMB)"
         shell: bash
         run: |
           CXX=$(R CMD config CXX)
@@ -51,12 +69,58 @@ jobs:
           RCPP_INC=$(Rscript -e 'cat(system.file("include", package="Rcpp"))')
           EIGEN_INC=$(Rscript -e 'cat(system.file("include", package="RcppEigen"))')
 
-          LOGFILE=$(mktemp)
+          if [ "${{ matrix.test }}" = "tmb-first" ]; then
+            SRC=src/isnan_bug.cpp
+          else
+            SRC=src/reversed_includes.cpp
+          fi
+
           $CXX $CXXFLAGS $CPPFLAGS $R_INC \
             -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
-            -c src/isnan_bug.cpp -o compile_test.o > "$LOGFILE" 2>&1
-          echo "Compilation succeeded with fixed TMB"
-          rm -f compile_test.o "$LOGFILE"
+            -c "$SRC" -o compile_test.o
+          echo ""
+          echo "========================================"
+          echo "RESULT: PASS (fixed TMB compiles fine)"
+          echo "========================================"
+          rm -f compile_test.o
+
+  # Run R CMD check on the fixed TMB package itself to
+  # confirm the fix does not break TMB's own examples/tests.
+  check-fixed-tmb:
+    runs-on: ${{ matrix.os }}
+    name: "TMB check / ${{ matrix.os }} / R ${{ matrix.r }}"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        r: ['release']
+
+    steps:
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          Rscript -e 'install.packages(c("RcppEigen", "Matrix", "numDeriv", "remotes"), repos = "https://cran.rstudio.com")'
+
+      - name: Build and check fixed TMB
+        shell: bash
+        run: |
+          Rscript -e 'remotes::install_github("samueldnj/adcomp/TMB", ref = "fix/isnan-bessel", INSTALL_opts = "--build")'
+          Rscript -e 'download.file("https://github.com/samueldnj/adcomp/archive/refs/heads/fix/isnan-bessel.tar.gz", "adcomp.tar.gz")'
+          tar xzf adcomp.tar.gz
+          R CMD build adcomp-fix-isnan-bessel/TMB
+          R CMD check --as-cran --no-manual TMB_*.tar.gz
+
+      - name: Show check results
+        if: always()
+        shell: bash
+        run: |
+          echo "=== 00check.log ==="
+          cat TMB.Rcheck/00check.log 2>/dev/null || echo "(not found)"
 
   diagnose:
     runs-on: ${{ matrix.os }}
