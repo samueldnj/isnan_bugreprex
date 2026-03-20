@@ -1,4 +1,4 @@
-name: R CMD check (GCC + C++17)
+name: TMB ISNAN bug reprex
 
 on: [push, pull_request]
 
@@ -26,7 +26,6 @@ jobs:
       - name: Compile isnan_bug.cpp (TMB before Rcpp)
         run: |
           echo "=== This should FAIL: TMB included before Rcpp ==="
-          # Get R compile flags
           CXX=$(R CMD config CXX)
           CXXFLAGS=$(R CMD config CXXFLAGS)
           CPPFLAGS=$(R CMD config CPPFLAGS)
@@ -75,8 +74,8 @@ jobs:
             -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
             -c src/reversed_includes.cpp -o /dev/null
 
-  # Test 3: Full R CMD INSTALL (TMB before Rcpp) — expected to FAIL
-  full-install:
+  # Test 3: Full R CMD check --as-cran — expected to FAIL
+  cran-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,7 +88,35 @@ jobs:
         with:
           packages: TMB, Rcpp, RcppEigen
 
-      - name: R CMD build and install
+      - name: R CMD build
+        run: R CMD build .
+
+      - name: R CMD check --as-cran
         run: |
-          R CMD build .
-          R CMD INSTALL isnanReprex_*.tar.gz 2>&1 || echo "INSTALL FAILED (expected)"
+          R CMD check --as-cran --no-manual isnanReprex_*.tar.gz 2>&1 || true
+          echo ""
+          echo "=== 00install.out ==="
+          cat isnanReprex.Rcheck/00install.out 2>/dev/null || echo "(not found)"
+
+  # Test 4: TMB's own CRAN check — expected to PASS
+  # (demonstrates that TMB passes its own checks while
+  #  downstream packages fail)
+  tmb-cran-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+
+      - name: Install TMB build dependencies
+        run: |
+          Rscript -e 'install.packages(c("RcppEigen", "Matrix"))'
+
+      - name: Download and check TMB from CRAN
+        run: |
+          echo "=== TMB's own CRAN check should PASS ==="
+          Rscript -e 'download.packages("TMB", destdir = ".")'
+          R CMD check --as-cran --no-manual TMB_*.tar.gz 2>&1 | tail -30
+          echo ""
+          echo "=== Status ==="
+          grep -c "ERROR" TMB.Rcheck/00check.log && echo "TMB check had ERRORs" || echo "TMB check: no ERRORs"
