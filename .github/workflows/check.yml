@@ -3,7 +3,8 @@ name: R CMD check (GCC + C++17)
 on: [push, pull_request]
 
 jobs:
-  check-ubuntu:
+  # Test 1: TMB before Rcpp (the common pattern) — expected to FAIL
+  tmb-before-rcpp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +21,75 @@ jobs:
         run: |
           gcc --version
           Rscript -e 'cat(R.version.string, "\n")'
-          Rscript -e 'cat("CXX17:", system2("R", c("CMD", "config", "CXX17"), stdout = TRUE), "\n")'
+          Rscript -e 'cat("CXX:", system2("R", c("CMD", "config", "CXX"), stdout = TRUE), "\n")'
 
-      - name: Install and test
+      - name: Compile isnan_bug.cpp (TMB before Rcpp)
+        run: |
+          echo "=== This should FAIL: TMB included before Rcpp ==="
+          # Get R compile flags
+          CXX=$(R CMD config CXX)
+          CXXFLAGS=$(R CMD config CXXFLAGS)
+          CPPFLAGS=$(R CMD config CPPFLAGS)
+          TMB_INC=$(Rscript -e 'cat(system.file("include", package="TMB"))')
+          RCPP_INC=$(Rscript -e 'cat(system.file("include", package="Rcpp"))')
+          EIGEN_INC=$(Rscript -e 'cat(system.file("include", package="RcppEigen"))')
+          R_INC=$(R CMD config --cppflags)
+
+          echo "Compiling with: $CXX $CXXFLAGS"
+          $CXX $CXXFLAGS $CPPFLAGS $R_INC \
+            -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
+            -c src/isnan_bug.cpp -o /dev/null 2>&1 || true
+
+  # Test 2: Rcpp before TMB — expected to PASS (workaround)
+  rcpp-before-tmb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: TMB, Rcpp, RcppEigen
+
+      - name: Show compiler info
+        run: |
+          gcc --version
+          Rscript -e 'cat(R.version.string, "\n")'
+
+      - name: Compile reversed_includes.cpp (Rcpp before TMB)
+        run: |
+          echo "=== This should PASS: Rcpp included before TMB ==="
+          CXX=$(R CMD config CXX)
+          CXXFLAGS=$(R CMD config CXXFLAGS)
+          CPPFLAGS=$(R CMD config CPPFLAGS)
+          TMB_INC=$(Rscript -e 'cat(system.file("include", package="TMB"))')
+          RCPP_INC=$(Rscript -e 'cat(system.file("include", package="Rcpp"))')
+          EIGEN_INC=$(Rscript -e 'cat(system.file("include", package="RcppEigen"))')
+          R_INC=$(R CMD config --cppflags)
+
+          echo "Compiling with: $CXX $CXXFLAGS"
+          $CXX $CXXFLAGS $CPPFLAGS $R_INC \
+            -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
+            -c src/reversed_includes.cpp -o /dev/null
+
+  # Test 3: Full R CMD INSTALL (TMB before Rcpp) — expected to FAIL
+  full-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: TMB, Rcpp, RcppEigen
+
+      - name: R CMD build and install
         run: |
           R CMD build .
-          R CMD INSTALL isnanReprex_*.tar.gz 2>&1 | tee install.log
-          # If installation succeeded, run the test
-          Rscript -e 'library(isnanReprex); cat("besselK(1, 0.5):", test_besselK(1, 0.5), "\n")'
+          R CMD INSTALL isnanReprex_*.tar.gz 2>&1 || echo "INSTALL FAILED (expected)"
