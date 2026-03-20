@@ -3,7 +3,7 @@ name: TMB ISNAN bug reprex
 on: [push, pull_request]
 
 jobs:
-  # Test 1: TMB before Rcpp (the common pattern) — expected to FAIL
+  # TMB before Rcpp (the common pattern) — FAILS on GCC
   tmb-before-rcpp:
     runs-on: ubuntu-latest
     steps:
@@ -19,13 +19,12 @@ jobs:
 
       - name: Show compiler info
         run: |
-          gcc --version
+          gcc --version | head -1
           Rscript -e 'cat(R.version.string, "\n")'
           Rscript -e 'cat("CXX:", system2("R", c("CMD", "config", "CXX"), stdout = TRUE), "\n")'
 
-      - name: Compile isnan_bug.cpp (TMB before Rcpp)
+      - name: Compile isnan_bug.cpp (TMB before Rcpp — expect FAIL)
         run: |
-          echo "=== This should FAIL: TMB included before Rcpp ==="
           CXX=$(R CMD config CXX)
           CXXFLAGS=$(R CMD config CXXFLAGS)
           CPPFLAGS=$(R CMD config CPPFLAGS)
@@ -34,12 +33,17 @@ jobs:
           EIGEN_INC=$(Rscript -e 'cat(system.file("include", package="RcppEigen"))')
           R_INC=$(R CMD config --cppflags)
 
-          echo "Compiling with: $CXX $CXXFLAGS"
-          $CXX $CXXFLAGS $CPPFLAGS $R_INC \
+          # Expect compilation to fail — invert exit code
+          if $CXX $CXXFLAGS $CPPFLAGS $R_INC \
             -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
-            -c src/isnan_bug.cpp -o /dev/null 2>&1 || true
+            -c src/isnan_bug.cpp -o /dev/null 2>&1; then
+            echo "::error::BUG NOT TRIGGERED — compilation succeeded unexpectedly"
+            exit 1
+          else
+            echo "Compilation failed as expected (ISNAN macro bug confirmed)"
+          fi
 
-  # Test 2: Rcpp before TMB — expected to PASS (workaround)
+  # Rcpp before TMB — PASSES (workaround)
   rcpp-before-tmb:
     runs-on: ubuntu-latest
     steps:
@@ -55,12 +59,11 @@ jobs:
 
       - name: Show compiler info
         run: |
-          gcc --version
+          gcc --version | head -1
           Rscript -e 'cat(R.version.string, "\n")'
 
-      - name: Compile reversed_includes.cpp (Rcpp before TMB)
+      - name: Compile reversed_includes.cpp (Rcpp before TMB — expect PASS)
         run: |
-          echo "=== This should PASS: Rcpp included before TMB ==="
           CXX=$(R CMD config CXX)
           CXXFLAGS=$(R CMD config CXXFLAGS)
           CPPFLAGS=$(R CMD config CPPFLAGS)
@@ -69,12 +72,12 @@ jobs:
           EIGEN_INC=$(Rscript -e 'cat(system.file("include", package="RcppEigen"))')
           R_INC=$(R CMD config --cppflags)
 
-          echo "Compiling with: $CXX $CXXFLAGS"
           $CXX $CXXFLAGS $CPPFLAGS $R_INC \
             -I"$TMB_INC" -I"$RCPP_INC" -I"$EIGEN_INC" \
             -c src/reversed_includes.cpp -o /dev/null
+          echo "Compilation succeeded (include-order workaround works)"
 
-  # Test 3: Full R CMD check --as-cran — expected to FAIL
+  # R CMD check --as-cran on the reprex — FAILS
   cran-check:
     runs-on: ubuntu-latest
     steps:
@@ -91,32 +94,19 @@ jobs:
       - name: R CMD build
         run: R CMD build .
 
-      - name: R CMD check --as-cran
+      - name: R CMD check --as-cran (expect FAIL)
         run: |
-          R CMD check --as-cran --no-manual isnanReprex_*.tar.gz 2>&1 || true
-          echo ""
+          R CMD check --as-cran --no-manual isnanReprex_*.tar.gz 2>&1
+          # If we get here, check passed unexpectedly
+          echo "::error::R CMD check passed unexpectedly"
+          exit 1
+        continue-on-error: true
+
+      - name: Show install log
+        if: always()
+        run: |
           echo "=== 00install.out ==="
           cat isnanReprex.Rcheck/00install.out 2>/dev/null || echo "(not found)"
-
-  # Test 4: TMB's own CRAN check — expected to PASS
-  # (demonstrates that TMB passes its own checks while
-  #  downstream packages fail)
-  tmb-cran-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: 'release'
-
-      - name: Install TMB build dependencies
-        run: |
-          Rscript -e 'install.packages(c("RcppEigen", "Matrix"))'
-
-      - name: Download and check TMB from CRAN
-        run: |
-          echo "=== TMB's own CRAN check should PASS ==="
-          Rscript -e 'download.packages("TMB", destdir = ".")'
-          R CMD check --as-cran --no-manual TMB_*.tar.gz 2>&1 | tail -30
           echo ""
-          echo "=== Status ==="
-          grep -c "ERROR" TMB.Rcheck/00check.log && echo "TMB check had ERRORs" || echo "TMB check: no ERRORs"
+          echo "=== 00check.log ==="
+          cat isnanReprex.Rcheck/00check.log 2>/dev/null || echo "(not found)"

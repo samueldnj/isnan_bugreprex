@@ -17,8 +17,8 @@ This replaces R's own `ISNAN` macro with one that calls bare
 `isnan()` (no `std::` prefix, no namespace qualification).
 
 When Rcpp headers are included *after* TMB, Rcpp's internal code
-picks up TMB's broken `ISNAN` macro instead of R's.  For example,
-`Rcpp/traits/is_infinite.h` line 36:
+picks up TMB's redefined `ISNAN` macro instead of R's.  For
+example, `Rcpp/traits/is_infinite.h` line 36:
 
 ```cpp
 return !( ISNAN(x) || R_FINITE(x) ) ;
@@ -45,20 +45,37 @@ All three must be true:
 
 ## Why CRAN does not catch this
 
-- TMB's own CRAN checks do not include Rcpp headers after the
-  bessel headers, so the macro conflict is never exposed
-- CRAN's Linux builders use GCC, but TMB itself compiles fine
-  because the macro only disrupts *downstream* code
-- Downstream CRAN packages that use both TMB and Rcpp
-  (e.g., glmmTMB) may include Rcpp first, accidentally
-  avoiding the bug
+TMB's own CRAN checks compile TMB in isolation -- the package
+does not include Rcpp headers, so the macro conflict is never
+exposed.
 
-## Files in this reprex
+Downstream CRAN packages that depend on TMB (e.g.,
+[glmmTMB](https://github.com/glmmTMB/glmmTMB)) avoid the bug
+because they do not include `Rcpp.h` in the same translation
+unit as `TMB.hpp`.  glmmTMB uses `RcppEigen` in `LinkingTo`
+only for Eigen header paths, but never actually
+`#include`s `Rcpp.h` in its source files.
 
-| File | Include order | Expected result on GCC |
-|------|--------------|----------------------|
-| `src/isnan_bug.cpp` | TMB then Rcpp | **FAILS** |
-| `src/reversed_includes.cpp` | Rcpp then TMB | passes |
+The bug surfaces in packages that use both TMB's C++ interface
+and Rcpp exports in the same `.cpp` file -- a less common but
+legitimate pattern.  TMB's
+[documentation](https://kaskr.github.io/adcomp/_book/Tutorial.html)
+shows `#include <TMB.hpp>` as the first include, which means
+any downstream code that follows this pattern and also uses
+Rcpp will hit the bug on GCC.
+
+## Workarounds
+
+1. **Reverse the include order** -- `#include <Rcpp.h>` before
+   `#include <TMB.hpp>`.  Rcpp's headers get preprocessed with
+   R's correct `ISNAN` before TMB redefines it.  This is
+   fragile and contradicts TMB's documented include pattern.
+
+2. **Avoid mixing TMB and Rcpp in the same file** -- use
+   separate translation units for TMB model code and Rcpp
+   exports.  This is what glmmTMB does.
+
+Neither workaround addresses the root cause.
 
 ## The fix
 
@@ -80,21 +97,25 @@ file and works on all compilers and C++ standards.
 
 See: [adcomp commit 456bc479f](https://github.com/kaskr/adcomp/compare/master...samueldnj:adcomp:fix/isnan-bessel)
 
+## Files in this reprex
+
+| File | Include order | Expected on GCC |
+|------|--------------|-----------------|
+| `src/isnan_bug.cpp` | TMB then Rcpp | **FAILS** |
+| `src/reversed_includes.cpp` | Rcpp then TMB | passes |
+
 ## CI results
 
-The [GitHub Actions workflow](https://github.com/samueldnj/isnan_bugreprex/actions/runs/23355056171)
-runs four jobs on Ubuntu (GCC):
+The [GitHub Actions workflow](https://github.com/samueldnj/isnan_bugreprex/actions)
+runs three jobs on Ubuntu (GCC):
 
 1. **tmb-before-rcpp** -- compiles `isnan_bug.cpp` (expected
-   to fail)
+   to fail, confirming the bug)
 2. **rcpp-before-tmb** -- compiles `reversed_includes.cpp`
    (expected to pass, demonstrating the include-order
    workaround)
 3. **cran-check** -- runs `R CMD check --as-cran` (expected
    to fail)
-4. **tmb-cran-check** -- runs `R CMD check --as-cran` on
-   TMB itself (expected to pass, showing why CRAN does not
-   catch the bug)
 
 ### R-hub results
 
