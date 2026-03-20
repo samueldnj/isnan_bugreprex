@@ -82,7 +82,8 @@ See: [adcomp commit 456bc479f](https://github.com/kaskr/adcomp/compare/master...
 
 ## CI results
 
-The GitHub Actions workflow runs four jobs on Ubuntu (GCC):
+The [GitHub Actions workflow](https://github.com/samueldnj/isnan_bugreprex/actions/runs/23355056171)
+runs four jobs on Ubuntu (GCC):
 
 1. **tmb-before-rcpp** -- compiles `isnan_bug.cpp` (expected
    to fail)
@@ -97,7 +98,8 @@ The GitHub Actions workflow runs four jobs on Ubuntu (GCC):
 
 ### R-hub results
 
-R-hub checks on CRAN-equivalent platforms both fail:
+[R-hub checks](https://github.com/samueldnj/isnan_bugreprex/actions/runs/23355366718)
+on CRAN-equivalent platforms both fail:
 
 - **linux (R-devel)** -- GCC with `-std=gnu++20`: ERROR
 - **ubuntu-gcc12** (matches CRAN's
