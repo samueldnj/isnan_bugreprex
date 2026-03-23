@@ -1,22 +1,25 @@
 /*
- * Minimal reprex for the TMB ISNAN macro bug.
+ * Minimal reprex for TMB/Rcpp macro conflicts.
  *
- * TMB's tiny_ad/bessel/bessel.hpp defines (inside namespace
- * bessel_utils):
+ * This file includes TMB.hpp BEFORE Rcpp.h, which triggers
+ * two classes of macro conflict:
  *
- *   template<class T> int isnan(T x) {
- *       return std::isnan(asDouble(x));
- *   }
- *   ...
- *   #define ISNAN(x) (isnan(x)!=0)
+ * 1. ISNAN: TMB's bessel.hpp defines
+ *        #define ISNAN(x) (isnan(x)!=0)
+ *    inside namespace bessel_utils, where a local isnan()
+ *    template is in scope.  The macro leaks out (undefs.h
+ *    does not clean it up).  GCC rejects the bare isnan()
+ *    call outside that namespace because C++17 does not
+ *    guarantee isnan in the global namespace.
  *
- * The macro expands to a bare isnan() call.  Under GCC with C++17,
- * this can fail because isnan is not guaranteed to be in the global
- * namespace — it lives only in std::.
- *
- * This file includes TMB.hpp and calls besselK(), which exercises
- * the ISNAN macro expansion path in bessel.hpp.  If the bug is
- * present, this file will fail to compile on GCC + C++17.
+ * 2. isNull / length: TMB pulls in R.h / Rinternals.h,
+ *    which define:
+ *        #define isNull  Rf_isNull
+ *        #define length  Rf_length
+ *    These rewrite Rcpp method names during preprocessing
+ *    (e.g., Rcpp::Nullable::isNull() becomes
+ *    Rcpp::Nullable::Rf_isNull()), causing signature
+ *    mismatches that cannot be fixed by post-hoc #undef.
  */
 
 // Prevent TMB from redefining the DLL init function
@@ -24,29 +27,42 @@
 
 #include <TMB.hpp>
 
-// Undefine R macros that clash with Rcpp
+// Undefine R macros that clash with Rcpp methods.
+// This fixes isNull/length for code WE write below,
+// but does NOT fix Rcpp's own headers — those were
+// already parsed with the macros active.
 #undef isNull
 #undef length
 
 #include <Rcpp.h>
 
-// Force instantiation of besselK with AD type to exercise the
-// ISNAN macro through the template code path.  Plain double may
-// bypass the template isnan and use a compiler built-in instead.
+// Force instantiation of besselK with AD type to exercise
+// the ISNAN macro through the template code path.  Plain
+// double may bypass the template isnan and use a compiler
+// built-in instead.
 // [[Rcpp::export]]
 double test_besselK(double x, double nu) {
     return besselK(x, nu);
 }
 
 // Also try with AD<double> to exercise the template path
-// that actually triggers the bug
+// that actually triggers the ISNAN bug
 // [[Rcpp::export]]
 double test_besselK_ad(double x, double nu) {
-    // Create AD variables and evaluate
     AD<double> x_ad = x;
     AD<double> nu_ad = nu;
     AD<double> result = besselK(x_ad, nu_ad);
     return CppAD::Value(result);
+}
+
+// Exercise the isNull macro conflict: Rcpp::Nullable
+// has an isNull() method that gets clobbered by R's
+// #define isNull Rf_isNull when TMB is included first.
+// [[Rcpp::export]]
+double test_nullable(Rcpp::Nullable<Rcpp::NumericVector> x) {
+    if (x.isNull()) return 0.0;
+    Rcpp::NumericVector xv(x.get());
+    return xv[0];
 }
 
 // Dummy objective function required by TMB

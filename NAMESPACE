@@ -1,3 +1,4 @@
 useDynLib(isnanReprex, .registration = TRUE)
 export(test_besselK)
 export(test_besselK_ad)
+export(test_nullable)

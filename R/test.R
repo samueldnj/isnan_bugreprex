@@ -15,3 +15,11 @@ test_besselK_ad <- function(x, nu) {
     .Call("test_besselK_ad", as.double(x), as.double(nu),
           PACKAGE = "isnanReprex")
 }
+
+#' Test Rcpp::Nullable (exercises the isNull macro)
+#' @param x optional numeric vector
+#' @export
+test_nullable <- function(x = NULL) {
+    .Call("test_nullable", x,
+          PACKAGE = "isnanReprex")
+}
