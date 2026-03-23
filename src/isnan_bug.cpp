@@ -27,14 +27,14 @@
 
 #include <TMB.hpp>
 
-// Undefine R macros that clash with Rcpp methods.
-// This fixes isNull/length for code WE write below,
-// but does NOT fix Rcpp's own headers — those were
-// already parsed with the macros active.
+// Do NOT #undef isNull/length here — we want to
+// demonstrate that TMB's R macros break Rcpp when
+// Rcpp is included after TMB without cleanup.
+#include <Rcpp.h>
+
+// Now undef so our own code below compiles
 #undef isNull
 #undef length
-
-#include <Rcpp.h>
 
 // Force instantiation of besselK with AD type to exercise
 // the ISNAN macro through the template code path.  Plain
